@@ -1,0 +1,64 @@
+version: '3.9'            # Compose file format (version 3.9)
+services:                 # Here we write the containers we want to start
+  pulsemesh-mongo:       # 1) MongoDB service
+    image: mongo:6.0      #   - Docker image to use
+    container_name: pulsemesh-mongo
+    restart: unless-stopped
+    volumes:
+      - pulsemesh_mongo_data:/data/db  # Store database files in a volume
+    networks:
+      - pulsemesh-net
+    ports:
+      - "27017:27017"
+
+  pulsemesh-redis:       # 2) Redis service
+    image: redis:7.2-alpine
+    container_name: pulsemesh-redis
+    restart: unless-stopped
+    command: ["redis-server", "--save", "60", "1", "--loglevel", "warning"]
+    volumes:
+      - pulsemesh_redis_data:/data
+    networks:
+      - pulsemesh-net
+    ports:
+      - "6379:6379"
+
+  pulsemesh-mosquitto:   # 3) MQTT Broker (Eclipse Mosquitto)
+    image: eclipse-mosquitto:2.0
+    container_name: pulsemesh-mosquitto
+    restart: unless-stopped
+    ports:
+      - "1883:1883"     # Redirect host machine's 1883 port to container's 1883
+    volumes:
+      - ./mosquitto/config:/mosquitto/config:ro   # Host's config files in container
+      - pulsemesh_mosq_data:/mosquitto/data
+      - pulsemesh_mosq_log:/mosquitto/log
+    networks:
+      - pulsemesh-net
+
+  pulsemesh-nginx:       # 4) NGINX reverse proxy
+    image: nginx:1.24-alpine
+    container_name: pulsemesh-nginx
+    restart: unless-stopped
+    ports:
+      - "80:80"         # HTTP
+      - "443:443"       # HTTPS
+    volumes:
+      - ./nginx/conf.d:/etc/nginx/conf.d:ro
+      - ./nginx/certs:/etc/nginx/certs:ro
+    depends_on:
+      - pulsemesh-mosquitto
+      - pulsemesh-mongo
+      - pulsemesh-redis
+    networks:
+      - pulsemesh-net
+
+volumes:                  # Docker volumes to store persistent data
+  pulsemesh_mongo_data:
+  pulsemesh_redis_data:
+  pulsemesh_mosq_data:
+  pulsemesh_mosq_log:
+
+networks:                 # Create a private network for containers
+  pulsemesh-net:
+    driver: bridge
